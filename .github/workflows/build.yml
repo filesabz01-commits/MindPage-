@@ -12,9 +12,8 @@ jobs:
     - name: 1. Checkout Repository
       uses: actions/checkout@v4
 
-    - name: 2. Unzip Project
+    - name: 2. Unzip Project & Fix Gradlew
       run: |
-        # پیدا کردن فایل زیپ و اکسترکت خودکار در سرور
         ZIPFILE=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
         if [ -z "$ZIPFILE" ]; then
           echo "هیچ فایل زیپی یافت نشد!"
@@ -23,7 +22,7 @@ jobs:
         echo "در حال اکسترکت: $ZIPFILE"
         unzip -o "$ZIPFILE"
 
-        # اگر پوشه‌ای داخل زیپ بود، محتویات را به روت منتقل کن
+        # اگر فایل‌ها داخل یک پوشه فشرده شده بودند، به ریشه منتقل کن
         if [ ! -f "gradlew" ]; then
           GRADLEW_PATH=$(find . -name "gradlew" | head -n 1)
           if [ -n "$GRADLEW_PATH" ]; then
@@ -32,6 +31,9 @@ jobs:
             cp -r "$PROJ_DIR"/* .
           fi
         fi
+
+        # حذف کوتیشن‌های خراب -Xmx64m از gradlew به صورت خودکار
+        sed -i 's/DEFAULT_JVM_OPTS=.*/DEFAULT_JVM_OPTS=""/' gradlew
         chmod +x gradlew
 
     - name: 3. Set up JDK 17
