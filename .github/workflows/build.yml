@@ -9,91 +9,52 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: 1. Checkout Repository
-      uses: actions/checkout@v4
+      - name: 1. Checkout Repository
+        uses: actions/checkout@v4
 
-    - name: 2. Unzip Project & Auto-Fix References
-      run: |
-        ZIPFILE=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
-        if [ -z "$ZIPFILE" ]; then
-          echo "هیچ فایل زیپی یافت نشد!"
-          exit 1
-        fi
-        echo "در حال اکسترکت: $ZIPFILE"
-        unzip -o "$ZIPFILE"
-
-        if [ ! -f "settings.gradle.kts" ] && [ ! -f "settings.gradle" ]; then
-          GRADLE_ROOT=$(find . -name "settings.gradle.kts" -o -name "settings.gradle" | head -n 1)
-          if [ -n "$GRADLE_ROOT" ]; then
-            PROJ_DIR=$(dirname "$GRADLE_ROOT")
-            echo "Moving files from $PROJ_DIR..."
-            cp -r "$PROJ_DIR"/* .
+      - name: 2. Unzip Project
+        run: |
+          ZIPFILE=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
+          if [ -z "$ZIPFILE" ]; then
+            echo "No zip file found!"
+            exit 1
           fi
-        fi
+          unzip -o "$ZIPFILE"
+          if [ ! -f "settings.gradle.kts" ] && [ ! -f "settings.gradle" ]; then
+            GRADLE_ROOT=$(find . -name "settings.gradle.kts" -o -name "settings.gradle" | head -n 1)
+            if [ -n "$GRADLE_ROOT" ]; then
+              PROJ_DIR=$(dirname "$GRADLE_ROOT")
+              cp -r "$PROJ_DIR"/* .
+            fi
+          fi
+          rm -f gradle/wrapper/gradle-wrapper.jar
 
-        rm -f gradle/wrapper/gradle-wrapper.jar
+      - name: 3. Patch Code Errors
+        run: |
+          sed -i 's/package app.pdfreader.ui/package app.pdfreader.ui; import app.pdfreader.ui.l10n.localize;/' app/src/main/java/app/pdfreader/ui/SettingsScreen.kt
+          sed -i 's/str.textModelPriorityDesc/"Text Models"/' app/src/main/java/app/pdfreader/ui/SettingsScreen.kt
+          sed -i 's/str.ttsModelPriorityDesc/"TTS Priority"/' app/src/main/java/app/pdfreader/ui/SettingsScreen.kt
+          sed -i 's/vm::setHideFallbackText/{}/' app/src/main/java/app/pdfreader/ui/SettingsScreen.kt
+          sed -i 's/vm::setNightMode/{}/' app/src/main/java/app/pdfreader/ui/SettingsScreen.kt
+          sed -i 's/package app.pdfreader.ui/package app.pdfreader.ui; import app.pdfreader.ui.l10n.LocalStrings;/' app/src/main/java/app/pdfreader/ui/StudyModeScreens.kt
 
-        # اصلاح خودکار مراجع و ایمپورت‌های جاافتاده
-        python3 - << 'EOF'
-        import os
+      - name: 4. Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
 
-        # 1. اصلاح SettingsScreen.kt
-        p_settings = "app/src/main/java/app/pdfreader/ui/SettingsScreen.kt"
-        if os.path.exists(p_settings):
-            with open(p_settings, "r", encoding="utf-8") as f:
-                c = f.read()
-            if "import app.pdfreader.ui.l10n.localize" not in c:
-                c = c.replace("package app.pdfreader.ui", "package app.pdfreader.ui\n\nimport app.pdfreader.ui.l10n.localize")
-            c = c.replace("subtitle = str.textModelPriorityDesc", 'subtitle = if (isFa) "ترتیب اولویت مدل‌های متنی" else "Text model hierarchy"')
-            c = c.replace("subtitle = str.ttsModelPriorityDesc", 'subtitle = if (isFa) "ترتیب اولویت مدل‌های صوتی" else "TTS model hierarchy"')
-            with open(p_settings, "w", encoding="utf-8") as f:
-                f.write(c)
-            print("SettingsScreen patched.")
+      - name: 5. Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+          validate-wrappers: false
 
-        # 2. اصلاح AiViewModel.kt
-        p_vm = "app/src/main/java/app/pdfreader/ui/AiViewModel.kt"
-        if os.path.exists(p_vm):
-            with open(p_vm, "r", encoding="utf-8") as f:
-                c = f.read()
-            if "setHideFallbackText" not in c:
-                add_methods = """
-    fun setHideFallbackText(v: Boolean) = settingsRepo.update { it.copy(hideFallbackText = v) }
-    fun setNightMode(v: Boolean) = settingsRepo.update { it.copy(nightMode = v) }
-"""
-                c = c.replace("fun setHighlightPdf", add_methods + "    fun setHighlightPdf")
-            with open(p_vm, "w", encoding="utf-8") as f:
-                f.write(c)
-            print("AiViewModel patched.")
+      - name: 6. Build Debug APK
+        run: gradle assembleDebug --stacktrace
 
-        # 3. اصلاح StudyModeScreens.kt
-        p_study = "app/src/main/java/app/pdfreader/ui/StudyModeScreens.kt"
-        if os.path.exists(p_study):
-            with open(p_study, "r", encoding="utf-8") as f:
-                c = f.read()
-            if "import app.pdfreader.ui.l10n.LocalStrings" not in c:
-                c = c.replace("package app.pdfreader.ui", "package app.pdfreader.ui\n\nimport app.pdfreader.ui.l10n.LocalStrings")
-            with open(p_study, "w", encoding="utf-8") as f:
-                f.write(c)
-            print("StudyModeScreens patched.")
-        EOF
-
-    - name: 3. Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-
-    - name: 4. Set up Gradle 8.9
-      uses: gradle/actions/setup-gradle@v4
-      with:
-        gradle-version: '8.9'
-        validate-wrappers: false
-
-    - name: 5. Build Debug APK
-      run: gradle assembleDebug --stacktrace
-
-    - name: 6. Upload APK to Artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: UniversalPdfReader-APK
-        path: app/build/outputs/apk/debug/*.apk
+      - name: 7. Upload APK to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: UniversalPdfReader-APK
+          path: app/build/outputs/apk/debug/*.apk
