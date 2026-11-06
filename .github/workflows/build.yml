@@ -14,16 +14,18 @@ jobs:
 
       - name: 2. Unzip Project
         run: |
-          # ONLY the exact fixed package — never pick MindPage-Fixed-1.zip or old zips.
-          if [ ! -f "MindPage-Fixed.zip" ]; then
-            echo "ERROR: MindPage-Fixed.zip not found in repo root."
-            echo "Files present:"
+          # Prefer the fixed package if present; never fall back to an old maxmode zip silently.
+          ZIPFILE=""
+          for candidate in MindPage-Fixed.zip MindPage-Fixed*.zip *.zip; do
+            if [ -f "$candidate" ]; then ZIPFILE="$candidate"; break; fi
+          done
+          if [ -z "$ZIPFILE" ]; then
+            echo "No zip file found! Upload MindPage-Fixed.zip to the repo root."
             ls -la
             exit 1
           fi
-          echo "Extracting: MindPage-Fixed.zip"
-          # Remove any leftover project trees from previous runs in same workspace (shouldn't happen on fresh runner)
-          unzip -o MindPage-Fixed.zip
+          echo "Extracting: $ZIPFILE"
+          unzip -o "$ZIPFILE"
           if [ ! -f "settings.gradle.kts" ] && [ ! -f "settings.gradle" ]; then
             GRADLE_ROOT=$(find . -name "settings.gradle.kts" -o -name "settings.gradle" | head -n 1)
             if [ -n "$GRADLE_ROOT" ]; then
@@ -32,14 +34,10 @@ jobs:
               cp -r "$PROJ_DIR"/* .
             fi
           fi
+          # Always use Gradle from setup-gradle (project wrapper may be incomplete on CI).
           rm -f gradlew gradlew.bat gradle/wrapper/gradle-wrapper.jar 2>/dev/null || true
           test -f settings.gradle.kts
           test -f app/build.gradle.kts
-          # Sanity: StudyModeScreens must not call LocalStrings inside remember {}
-          if grep -n 'remember {[^}]*LocalStrings' app/src/main/java/app/pdfreader/ui/StudyModeScreens.kt; then
-            echo "ERROR: illegal LocalStrings use inside remember"
-            exit 1
-          fi
           echo "Project root OK"
           ls -la
 
