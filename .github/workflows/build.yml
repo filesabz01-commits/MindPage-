@@ -27,34 +27,32 @@ jobs:
               cp -r "$PROJ_DIR"/* .
             fi
           fi
-          rm -f gradle/wrapper/gradle-wrapper.jar
+          # Prefer the project's own Gradle wrapper; do not delete it.
+          chmod +x gradlew 2>/dev/null || true
 
-      - name: 3. Patch Code Errors
-        run: |
-          sed -i 's/package app.pdfreader.ui/package app.pdfreader.ui; import app.pdfreader.ui.l10n.localize;/' app/src/main/java/app/pdfreader/ui/SettingsScreen.kt
-          sed -i 's/str.textModelPriorityDesc/"Text Models"/' app/src/main/java/app/pdfreader/ui/SettingsScreen.kt
-          sed -i 's/str.ttsModelPriorityDesc/"TTS Priority"/' app/src/main/java/app/pdfreader/ui/SettingsScreen.kt
-          sed -i 's/vm::setHideFallbackText/{}/' app/src/main/java/app/pdfreader/ui/SettingsScreen.kt
-          sed -i 's/vm::setNightMode/{}/' app/src/main/java/app/pdfreader/ui/SettingsScreen.kt
-          sed -i 's/package app.pdfreader.ui/package app.pdfreader.ui; import app.pdfreader.ui.l10n.LocalStrings;/' app/src/main/java/app/pdfreader/ui/StudyModeScreens.kt
-
-      - name: 4. Set up JDK 17
+      - name: 3. Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: 5. Set up Gradle 8.9
+      - name: 4. Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
           validate-wrappers: false
 
-      - name: 6. Build Debug APK
-        run: gradle assembleDebug --stacktrace
+      - name: 5. Build Debug APK
+        run: |
+          if [ -f gradlew ]; then
+            ./gradlew assembleDebug --stacktrace
+          else
+            gradle assembleDebug --stacktrace
+          fi
 
-      - name: 7. Upload APK to Artifacts
+      - name: 6. Upload APK to Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: UniversalPdfReader-APK
           path: app/build/outputs/apk/debug/*.apk
+          
