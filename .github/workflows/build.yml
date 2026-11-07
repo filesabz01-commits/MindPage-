@@ -1,0 +1,101 @@
+name: MindPage Android Build
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build MindPage APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. دریافت سورس کد از GitHub
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. نصب Java 17
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # 3. پیدا کردن و استخراج فایل ZIP پروژه
+      - name: Extract Android project
+        run: |
+          set -e
+
+          mkdir -p project
+
+          echo "Searching for Android project ZIP..."
+
+          ZIP_FILE=$(find . -maxdepth 5 -type f -iname "*.zip" | head -n 1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: No ZIP file found in repository."
+            echo "Upload your Android project ZIP to the repository first."
+            exit 1
+          fi
+
+          echo "Found ZIP: $ZIP_FILE"
+
+          unzip -q "$ZIP_FILE" -d project
+
+          echo "Extracting completed."
+
+      # 4. پیدا کردن پوشه اصلی پروژه
+      - name: Locate Gradle project
+        id: locate
+        run: |
+          set -e
+
+          GRADLE_FILE=$(find project -type f -name "settings.gradle" -o -name "settings.gradle.kts" | head -n 1)
+
+          if [ -z "$GRADLE_FILE" ]; then
+            echo "ERROR: settings.gradle or settings.gradle.kts not found."
+            echo "The ZIP may not contain a valid Android project."
+            find project -maxdepth 4 -type f | head -n 100
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$GRADLE_FILE")
+
+          echo "Project directory: $PROJECT_DIR"
+          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+
+      # 5. نصب مجوز اجرای Gradle Wrapper
+      - name: Set Gradle permissions
+        run: |
+          chmod +x "${{ steps.locate.outputs.project_dir }}/gradlew"
+
+      # 6. بررسی نسخه Gradle
+      - name: Check Gradle
+        working-directory: ${{ steps.locate.outputs.project_dir }}
+        run: ./gradlew --version
+
+      # 7. ساخت APK
+      - name: Build Debug APK
+        working-directory: ${{ steps.locate.outputs.project_dir }}
+        run: ./gradlew assembleDebug --stacktrace
+
+      # 8. پیدا کردن فایل APK
+      - name: Find APK
+        run: |
+          echo "Searching for generated APK..."
+          find "${{ steps.locate.outputs.project_dir }}" -type f -name "*.apk"
+
+      # 9. ذخیره APK در GitHub Actions
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: MindPage-APK
+          path: |
+            ${{ steps.locate.outputs.project_dir }}/**/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+          retention-days: 14
